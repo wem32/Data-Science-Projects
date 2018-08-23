@@ -1,0 +1,195 @@
+---
+title: "EDA Report"
+author: "Wabi Mposo"
+date: "May 15, 2018"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+                                   ## Exploratory Data Analysis
+# loading packages
+
+```{r, echo=FALSE, warning=F}
+library(modelr)
+library(tidyverse)
+library(ggplot2)
+library(knitr)
+library(readxl)
+
+```
+
+
+# loading data
+
+```{r, echo=FALSE, warning=FALSE}
+credit_c.d <- read_excel("data/unprocessed/default of credit card clients.xls")
+
+# getting a small view of the data
+head(credit_c.d, 8)
+```
+
+# measure of central tendency and shape of distribution
+
+```{r, echo=FALSE, warning=FALSE}
+
+head(lapply(credit_c.d[, -c(1, 3:12)], summary),8)
+
+# Visualizing credit amount based on gender, education, and marriage status
+credit_c.d %>%
+  ggplot(aes(x= limit_bal)) +
+  geom_freqpoly(aes(color= sex)) +
+  facet_grid(educ~marriage)
+
+# visualizing default
+credit_c.d %>%
+  ggplot(aes(x=default_pay)) +
+  geom_bar()
+
+```
+
+The distribution of *limit-balance* is right skewed suggesting that most of the loan payment are in the lower end of amount scale; however; the mean is greater than the variance because of limit_balances high up the scale. In statistical jargon, there are extreme observations in the positive x-axis.
+
+Also, the default seems to suggest that there are many more payments default for next month than payments made on time. This is somewhat to be expected since this was a period approaching the financial crisis where there was easy access to credit but not necessarily hedged with an comparable income source. 
+
+# Transforming data into time series format.
+
+```{r, echo=FALSE, warning=FALSE}
+table1 <- credit_c.d %>%
+  gather(key = "pay_period", value = "pay_amt", starts_with("pay")) %>% 
+  transmute(pay_period =pay_period, pay_amt = pay_amt)
+
+table2 <- credit_c.d %>%
+  gather(key = "bill_period", value = "bill_amt", starts_with("bill")) %>%
+  transmute(bill_period = bill_period, bill_amt = bill_amt)
+
+table3 <- credit_c.d %>%
+  gather(key = "repay_period", value = "status", starts_with("repay")) %>%
+  transmute(limit_bal = limit_bal, sex = sex, educ = educ, marriage = marriage, age = age, repay_period = repay_period, status = status)
+
+credit_gather <- data.frame(table3, table1, table2)
+
+# Viewing how the new data look like
+head(credit_gather, 5)
+
+# five number summary
+lapply(credit_gather[, -c(2:4, 6:8, 10)], summary)
+
+```
+
+# Looking at distributions of data
+
+```{r, echo = FALSE, warning=FALSE}
+
+credit_gather %>%
+  ggplot(aes(x =status)) +
+  geom_bar()
+
+credit_gather %>%
+  ggplot(aes(x = age)) +
+  geom_histogram()
+
+credit_gather %>%
+  ggplot(aes(x= limit_bal)) +
+  geom_histogram( bin = 20)
+
+credit_gather %>%
+  ggplot(aes(x = pay_amt)) +
+  geom_histogram() +
+  xlim(0,10000)
+
+credit_gather %>%
+  ggplot(aes(x= bill_amt)) +
+  geom_histogram()+
+  xlim(0,10000)
+
+```
+
+First, It seems that most of our continous variables are not normally distributed. However, because the  sample size is large, the normality assumptions hold. 
+
+Second, most people in our data hold revolving credits, which make sense because they are the easiest loans to get and there's no fixed payment commitmen; thus, the likelyhood of default is higher. 
+
+# Visualization of two categorical variables
+
+```{r, echo=FALSE, warning=F}
+credit_gather %>%
+  ggplot(aes(x=educ, y = status)) +
+  geom_count()
+
+credit_gather %>%
+  ggplot(aes(x =marriage, y = status)) +
+  geom_count()
+
+```
+
+The above seems to confirm our hypothesis. We see that most groups have higher revolving credits as loan. One strange group, however, is others. They seem to deviate from the rest. Thatis, they do not have a larger revoling credit and their payment status is well spread-out. 
+
+# visualization with boxplot
+
+```{r, echo=FALSE, warning= F}
+
+credit_gather %>%
+  ggplot(aes(x=status, y = limit_bal)) +
+  geom_boxplot()
+
+
+credit_gather %>%
+  ggplot(aes(x=educ, y = limit_bal)) +
+  geom_boxplot()
+
+
+credit_gather %>%
+  ggplot(aes(x=marriage, y = limit_bal)) +
+  geom_boxplot()
+
+credit_gather %>%
+  ggplot(aes(x=sex, y = limit_bal)) +
+  geom_boxplot()
+
+```
+
+One interesting fact is that lower credit limit balances are associated with longer delayed payments. 
+Also, as expected, those who have completed grad  school have the highest loans. This either suggest an increased purchasing power from income earned at work or exisitng loans from graduate school. 
+
+# More visualization 
+
+```{r, echo=F, warning=F}
+credit_gather %>%
+  group_by(age, marriage) %>%
+  summarise(X1 = sum(pay_amt/1000), Z1 = sum(bill_amt)/1000) %>%
+  ggplot(aes(x=Z1, y=X1 , color = marriage)) +
+  geom_point() +
+  geom_smooth(se = F)
+```
+
+It seems that payments to credit balances are non-linear (although they are certainly approaching linearity) as they relates to age
+
+# Visualization  using scatterplots
+
+```{r, echo = F, warning=F}
+credit_gather %>%
+  ggplot(aes(x = limit_bal, y = pay_amt, color = sex)) +
+  geom_point() +
+  facet_grid(educ~marriage)
+
+credit_gather %>%
+  ggplot(aes(x = bill_amt, y = pay_amt, color = sex)) +
+  geom_point() +
+  facet_grid(educ~marriage)
+```
+
+```{r, echo=F, warning=F}
+
+credit_gather %>%
+  group_by(educ) %>%
+  summarise(avg_bal = mean(limit_bal), avg_pay = mean(pay_amt)) %>%
+  ggplot(aes(x = avg_pay, y = avg_bal, color = educ)) +
+  geom_point(size =5) 
+```
+
+It is amazing to see the gap between the credit limit and payment capacity of those with *university* and *grad school* diploma.
+
+
+
+```
